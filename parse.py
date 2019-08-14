@@ -1,10 +1,11 @@
 from collections import defaultdict
+import os
 import requests
 
-DEBUG = 0
+DEBUG = os.getenv("DEBUG_AUTOBLINK") or 0
 
 def debug(s):
-    if DEBUG != 0:
+    if DEBUG != 0 and DEBUG != "0":
         print(s)
 
 def get_stations(binary_response_from_onhub):
