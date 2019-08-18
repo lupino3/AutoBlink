@@ -13,16 +13,18 @@ BLINK_USER = os.getenv("BLINK_USER")
 BLINK_PASS = os.getenv("BLINK_PASS")
 BLINK_NETWORK = os.getenv("BLINK_NETWORK")
 
-async def get_blink_armed_status(blink):
+def get_blink_armed_status(blink):
     blink.refresh()
     return blink.sync[BLINK_NETWORK].arm
 
-async def send_blink_status(device_client, blink_task, logger):
+async def send_blink_status(device_client, armed_status, error, error_message, logger):
     msg = {
             "active": 1,
             "device": "RaspberryPiAutoBlink",
             "timestamp": time.time(),
-            "armed": await blink_task
+            "armed": armed_status,
+            "error": error,
+            "error_message": error_message,
     }
     serialized_msg = json.dumps(msg)
 
@@ -35,7 +37,7 @@ async def send_blink_status(device_client, blink_task, logger):
 async def main(logger):
     logger.info("Connecting to IoT Hub")
     device_client = IoTHubDeviceClient.create_from_connection_string(IOTHUB_DEVICE_CONNECTION_STRING)
-    logger.info("Connected")
+    logger.info("Connected.")
 
     # Task to receive cloud-to-device commands.
     c2d_task = asyncio.create_task(device_client.receive_c2d_message())
@@ -46,11 +48,20 @@ async def main(logger):
     logger.info("Connected.")
 
     while True:
+        error = False
+        error_message = ""
+        armed_status = None
+
         # TODO: error handling -- what if Blink is not available or returns a bad value?
         # Need a timeout (wait_for) in addition to dealing with invalid errors.
-        blink_task = asyncio.create_task(get_blink_armed_status(blink))
+        try:
+            armed_status = get_blink_armed_status(blink)
+        except e:
+            logger.exception(e)
+            error = True
+            error_message = e.message
 
-        await send_blink_status(device_client, blink_task, logger)
+        await send_blink_status(device_client, armed_status, error, error_message, logger)
 
         done, pending = await asyncio.wait({c2d_task}, timeout=30)
 
