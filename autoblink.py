@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import os
 import sys
 import time
@@ -16,7 +17,7 @@ async def get_blink_armed_status(blink):
     blink.refresh()
     return blink.sync[BLINK_NETWORK].arm
 
-async def send_blink_status(device_client, blink_task):
+async def send_blink_status(device_client, blink_task, logger):
     msg = {
             "active": 1,
             "device": "RaspberryPiAutoBlink",
@@ -25,54 +26,58 @@ async def send_blink_status(device_client, blink_task):
     }
     serialized_msg = json.dumps(msg)
 
-    print("Sending message: " + serialized_msg)
+    logger.info("Sending message: " + serialized_msg)
     await device_client.send_d2c_message(serialized_msg)
-    print("Message successfully sent!")
+    logger.info("Message successfully sent!")
     await device_client.disconnect()
 
 
-async def main():
-    print("Connecting to IoT Hub")
+async def main(logger):
+    logger.info("Connecting to IoT Hub")
     device_client = IoTHubDeviceClient.create_from_connection_string(IOTHUB_DEVICE_CONNECTION_STRING)
-    print("Connected")
+    logger.info("Connected")
 
     # Task to receive cloud-to-device commands.
     c2d_task = asyncio.create_task(device_client.receive_c2d_message())
 
-    print("Connecting to Blink")
+    logger.info("Connecting to Blink")
     blink = blinkpy.Blink(username=BLINK_USER, password=BLINK_PASS)
     blink.start()
-    print("Connected.")
+    logger.info("Connected.")
 
     while True:
         # TODO: error handling -- what if Blink is not available or returns a bad value?
         # Need a timeout (wait_for) in addition to dealing with invalid errors.
         blink_task = asyncio.create_task(get_blink_armed_status(blink))
 
-        await send_blink_status(device_client, blink_task)
+        await send_blink_status(device_client, blink_task, logger)
 
         done, pending = await asyncio.wait({c2d_task}, timeout=30)
 
         if c2d_task in done:
-            print("Exiting due to c2d message: " + c2d_task.result().data.decode("utf-8"))
+            logger.info("Exiting due to c2d message: " + c2d_task.result().data.decode("utf-8"))
             sys.exit(0)
 
 
 if __name__ == "__main__":
+    logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
+    mainLogger = logging.getLogger("main")
+    mainLogger.setLevel(logging.INFO)
+
     if not IOTHUB_DEVICE_CONNECTION_STRING:
-        print("Please set the environment variable IOTHUB_DEVICE_CONNECTION_STRING")
+        mainLogger.error("Please set the environment variable IOTHUB_DEVICE_CONNECTION_STRING")
         sys.exit(1)
 
     if not BLINK_USER:
-        print("Please set the environment variable BLINK_USER")
+        mainLogger.error("Please set the environment variable BLINK_USER")
         sys.exit(1)
 
     if not BLINK_PASS:
-        print("Please set the environment variable BLINK_PASS")
+        mainLogger.error("Please set the environment variable BLINK_PASS")
         sys.exit(1)
 
     if not BLINK_NETWORK:
-        print("Please set the environment variable BLINK_NETWORK")
+        mainLogger.error("Please set the environment variable BLINK_NETWORK")
         sys.exit(1)
-
-    asyncio.run(main())
+    
+    asyncio.run(main(mainLogger))
