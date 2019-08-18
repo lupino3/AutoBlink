@@ -20,11 +20,12 @@ async def get_blink_armed_status():
     return blink.sync[BLINK_NETWORK].arm
 
 async def main():
+    device_client = IoTHubDeviceClient.create_from_connection_string(IOTHUB_DEVICE_CONNECTION_STRING)
+
     while True:
         # TODO: error handling -- what if Blink is not available or returns a bad value?
         # Need a timeout (wait_for) in addition to dealing with invalid errors.
         blink_task = asyncio.create_task(get_blink_armed_status())
-        device_client = IoTHubDeviceClient.create_from_connection_string(IOTHUB_DEVICE_CONNECTION_STRING)
         msg = {
                 "active": 1,
                 "device": "RaspberryPiAutoBlink",
