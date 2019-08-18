@@ -12,11 +12,8 @@ BLINK_USER = os.getenv("BLINK_USER")
 BLINK_PASS = os.getenv("BLINK_PASS")
 BLINK_NETWORK = os.getenv("BLINK_NETWORK")
 
-async def get_blink_armed_status():
-    print("Connecting to Blink")
-    blink = blinkpy.Blink(username=BLINK_USER, password=BLINK_PASS)
-    blink.start()
-    print("Connected to Blink, information fetched.")
+async def get_blink_armed_status(blink):
+    blink.refresh()
     return blink.sync[BLINK_NETWORK].arm
 
 async def send_blink_status(device_client, blink_task):
@@ -35,15 +32,22 @@ async def send_blink_status(device_client, blink_task):
 
 
 async def main():
+    print("Connecting to IoT Hub")
     device_client = IoTHubDeviceClient.create_from_connection_string(IOTHUB_DEVICE_CONNECTION_STRING)
+    print("Connected")
 
     # Task to receive cloud-to-device commands.
     c2d_task = asyncio.create_task(device_client.receive_c2d_message())
 
+    print("Connecting to Blink")
+    blink = blinkpy.Blink(username=BLINK_USER, password=BLINK_PASS)
+    blink.start()
+    print("Connected.")
+
     while True:
         # TODO: error handling -- what if Blink is not available or returns a bad value?
         # Need a timeout (wait_for) in addition to dealing with invalid errors.
-        blink_task = asyncio.create_task(get_blink_armed_status())
+        blink_task = asyncio.create_task(get_blink_armed_status(blink))
 
         await send_blink_status(device_client, blink_task)
 
