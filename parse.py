@@ -1,4 +1,5 @@
 from collections import defaultdict
+import asyncio
 import os
 import requests
 
@@ -12,7 +13,7 @@ class OnHubData:
     def __init__(self):
         self.stations = []
 
-    def refresh(self):
+    async def refresh(self):
         # Mimic a browser. Data obtained by converting a request from the browser to
         # cURL format and then converted to requests syntax with https://curl.trillworks.com/
         headers = {
@@ -96,8 +97,12 @@ class OnHubData:
         return ip_addresses
 
 
-data = OnHubData()
-data.refresh()
+async def main():
+    data = OnHubData()
+    await data.refresh()
 
-print("\n".join(data.get_connected_stations()))
-print("\n".join(data.get_connected_ips()))
+    print("\n".join(data.get_connected_stations()))
+    print("\n".join(data.get_connected_ips()))
+
+if __name__ == "__main__":
+    asyncio.run(main())
