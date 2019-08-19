@@ -15,6 +15,7 @@ IOTHUB_DEVICE_CONNECTION_STRING = os.getenv("IOTHUB_DEVICE_CONNECTION_STRING")
 BLINK_USER = os.getenv("BLINK_USER")
 BLINK_PASS = os.getenv("BLINK_PASS")
 BLINK_NETWORK = os.getenv("BLINK_NETWORK")
+CONTROLLING_IPS = os.getenv("CONTROLLING_IPS")
 
 class OnHubData:
     def __init__(self, logger):
@@ -112,7 +113,11 @@ async def get_blink_armed_status(blink, logger):
     logger.info("Blink data refreshed.")
     return blink.sync[BLINK_NETWORK].arm
 
-async def send_blink_status(device_client, armed_status, error, error_message, connected_ips, logger):
+def set_blink_armed_status(blink, logger, status):
+    logger.info("Changing Blink arming status to %s" % status)
+    blink.sync[BLINK_NETWORK].arm = status
+
+async def send_blink_status(device_client, armed_status, error, error_message, connected_ips, action, logger):
     msg = {
             "active": 1,
             "device": "RaspberryPiAutoBlink",
@@ -120,6 +125,7 @@ async def send_blink_status(device_client, armed_status, error, error_message, c
             "armed": armed_status,
             "connected_ips": connected_ips,
             "error": error,
+            "action": action,
             "error_message": error_message,
     }
     serialized_msg = json.dumps(msg)
@@ -132,7 +138,6 @@ async def send_blink_status(device_client, armed_status, error, error_message, c
 async def get_connected_ips(onhub):
     await onhub.refresh()
     return onhub.get_connected_ips()
-
 
 async def main(logger):
     logger.info("Connecting to IoT Hub")
@@ -148,16 +153,20 @@ async def main(logger):
     logger.info("Connected.")
 
     onhub = OnHubData(logger)
+    controlling_ips = sorted(CONTROLLING_IPS.split(","))
 
     while True:
+        logger.info("------ Starting new cycle")
         error = False
         error_message = ""
         armed_status = None
+        action = ""
 
         # TODO: error handling -- what if Blink is not available or returns a bad value?
         # Need a timeout (wait_for) in addition to dealing with invalid errors.
         try:
             armed_status, connected_ips = await asyncio.gather(get_blink_armed_status(blink, logger), get_connected_ips(onhub))
+            connected_ips = sorted(connected_ips)
             logger.info("Connected IPs: %s" % connected_ips)
             logger.info("Armed Status: %s" % armed_status)
         except Exception as e:
@@ -165,8 +174,29 @@ async def main(logger):
             error = True
             error_message = e.message
 
-        await send_blink_status(device_client, armed_status, error, error_message, connected_ips, logger)
+        connected_ips_set = frozenset(connected_ips)
+        logger.info("Controlling IPs: %s" % controlling_ips)
+        connected_controlling_ips = sorted(ip for ip in controlling_ips if ip in connected_ips_set)
+        logger.info("Connected controlling IPs: %s" % connected_controlling_ips)
 
+        if armed_status == True:
+            logger.info("Blink armed, checking if any controlling devices are connected.")
+            if connected_controlling_ips:
+                action = "disarm"
+                set_blink_armed_status(blink, logger, False)
+            else:
+                logger.info("No controlling devices connected, not disarming")
+        elif armed_status == False:
+            logger.info("Blink disarmed, checking if no controlling devices are connected.")
+            if not connected_controlling_ips:
+                action = "arm"
+                set_blink_armed_status(blink, logger, True)
+            else:
+                logger.info("Some controlling devices connected, not arming")
+
+        await send_blink_status(device_client, armed_status, error, error_message, connected_ips, action, logger)
+
+        logger.info("Waiting 30 seconds (or a kill c2d message).")
         done, pending = await asyncio.wait({c2d_task}, timeout=30)
 
         if c2d_task in done:
@@ -193,6 +223,10 @@ if __name__ == "__main__":
 
     if not BLINK_NETWORK:
         mainLogger.error("Please set the environment variable BLINK_NETWORK")
+        sys.exit(1)
+
+    if not CONTROLLING_IPS:
+        mainLogger.error("Please set the environment variable CONTROLLING_IPS")
         sys.exit(1)
     
     asyncio.run(main(mainLogger))
