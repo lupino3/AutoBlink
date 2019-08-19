@@ -194,6 +194,7 @@ async def main(logger):
             else:
                 logger.info("Some controlling devices connected, not arming")
 
+        # TODO: Add timeouts to all await statements.
         await send_blink_status(device_client, armed_status, error, error_message, connected_ips, action, logger)
 
         logger.info("Waiting 30 seconds (or a kill c2d message).")
