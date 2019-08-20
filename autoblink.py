@@ -196,7 +196,7 @@ async def main(logger):
 
         # TODO: Add timeouts to all await statements.
         try:
-            await asyncio.await_for(send_blink_status(device_client, armed_status, error, error_message, connected_ips, action, logger), timeout=30.0)
+            await asyncio.wait_for(send_blink_status(device_client, armed_status, error, error_message, connected_ips, action, logger), timeout=30.0)
         except asyncio.TimeoutError:
             logger.warning("Could not send message to IoT Hub")
 
