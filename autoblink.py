@@ -195,7 +195,10 @@ async def main(logger):
                 logger.info("Some controlling devices connected, not arming")
 
         # TODO: Add timeouts to all await statements.
-        await send_blink_status(device_client, armed_status, error, error_message, connected_ips, action, logger)
+        try:
+            await asyncio.await_for(send_blink_status(device_client, armed_status, error, error_message, connected_ips, action, logger), timeout=30.0)
+        except asyncio.TimeoutError:
+            logger.warning("Could not send message to IoT Hub")
 
         logger.info("Waiting 30 seconds (or a kill c2d message).")
         done, pending = await asyncio.wait({c2d_task}, timeout=30)
