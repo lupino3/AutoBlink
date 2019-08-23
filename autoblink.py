@@ -117,7 +117,8 @@ def set_blink_armed_status(blink, logger, status):
     logger.info("Changing Blink arming status to %s" % status)
     blink.sync[BLINK_NETWORK].arm = status
 
-async def send_blink_status(device_client, armed_status, error, error_message, connected_ips, action, logger):
+async def send_blink_status(device_client, armed_status, error, connected_ips, action, logger):
+    await device_client.connect()
     msg = {
             "active": 1,
             "device": "RaspberryPiAutoBlink",
@@ -126,7 +127,6 @@ async def send_blink_status(device_client, armed_status, error, error_message, c
             "connected_ips": connected_ips,
             "error": error,
             "action": action,
-            "error_message": error_message,
     }
     serialized_msg = json.dumps(msg)
 
@@ -139,26 +139,17 @@ async def get_connected_ips(onhub):
     await onhub.refresh()
     return onhub.get_connected_ips()
 
-async def main(logger):
-    logger.info("Connecting to IoT Hub")
+async def main(logger, blink, onhub):
+    mainLogger.info("Connecting to IoT Hub")
     device_client = IoTHubDeviceClient.create_from_connection_string(IOTHUB_DEVICE_CONNECTION_STRING)
-    logger.info("Connected.")
+    mainLogger.info("Connected.")
 
     # Task to receive cloud-to-device commands.
     c2d_task = asyncio.create_task(device_client.receive_c2d_message())
 
-    logger.info("Connecting to Blink")
-    blink = blinkpy.Blink(username=BLINK_USER, password=BLINK_PASS)
-    blink.start()
-    logger.info("Connected.")
-
-    onhub = OnHubData(logger)
-    controlling_ips = sorted(CONTROLLING_IPS.split(","))
-
     while True:
         logger.info("------ Starting new cycle")
-        error = False
-        error_message = ""
+        error = None
         armed_status = None
         action = ""
 
@@ -169,34 +160,33 @@ async def main(logger):
             connected_ips = sorted(connected_ips)
             logger.info("Connected IPs: %s" % connected_ips)
             logger.info("Armed Status: %s" % armed_status)
+
+            connected_ips_set = frozenset(connected_ips)
+            logger.info("Controlling IPs: %s" % controlling_ips)
+            connected_controlling_ips = sorted(ip for ip in controlling_ips if ip in connected_ips_set)
+            logger.info("Connected controlling IPs: %s" % connected_controlling_ips)
+
+            if armed_status == True:
+                logger.info("Blink armed, checking if any controlling devices are connected.")
+                if connected_controlling_ips:
+                    action = "disarm"
+                    set_blink_armed_status(blink, logger, False)
+                else:
+                    logger.info("No controlling devices connected, not disarming")
+            elif armed_status == False:
+                logger.info("Blink disarmed, checking if no controlling devices are connected.")
+                if not connected_controlling_ips:
+                    action = "arm"
+                    set_blink_armed_status(blink, logger, True)
+                else:
+                    logger.info("Some controlling devices connected, not arming")
         except Exception as e:
             logger.exception(e)
-            error = True
-            error_message = e.message
-
-        connected_ips_set = frozenset(connected_ips)
-        logger.info("Controlling IPs: %s" % controlling_ips)
-        connected_controlling_ips = sorted(ip for ip in controlling_ips if ip in connected_ips_set)
-        logger.info("Connected controlling IPs: %s" % connected_controlling_ips)
-
-        if armed_status == True:
-            logger.info("Blink armed, checking if any controlling devices are connected.")
-            if connected_controlling_ips:
-                action = "disarm"
-                set_blink_armed_status(blink, logger, False)
-            else:
-                logger.info("No controlling devices connected, not disarming")
-        elif armed_status == False:
-            logger.info("Blink disarmed, checking if no controlling devices are connected.")
-            if not connected_controlling_ips:
-                action = "arm"
-                set_blink_armed_status(blink, logger, True)
-            else:
-                logger.info("Some controlling devices connected, not arming")
+            error = e
 
         # TODO: Add timeouts to all await statements.
         try:
-            await asyncio.wait_for(send_blink_status(device_client, armed_status, error, error_message, connected_ips, action, logger), timeout=30.0)
+            await asyncio.wait_for(send_blink_status(device_client, armed_status, error, connected_ips, action, logger), timeout=30.0)
         except asyncio.TimeoutError:
             logger.warning("Could not send message to IoT Hub")
 
@@ -232,5 +222,13 @@ if __name__ == "__main__":
     if not CONTROLLING_IPS:
         mainLogger.error("Please set the environment variable CONTROLLING_IPS")
         sys.exit(1)
+
+    mainLogger.info("Connecting to Blink")
+    blink = blinkpy.Blink(username=BLINK_USER, password=BLINK_PASS)
+    blink.start()
+    mainLogger.info("Connected.")
+
+    onhub = OnHubData(mainLogger)
+    controlling_ips = sorted(CONTROLLING_IPS.split(","))
     
-    asyncio.run(main(mainLogger))
+    asyncio.run(main(mainLogger, blink, onhub))
