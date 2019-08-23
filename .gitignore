@@ -1,3 +1,4 @@
 *.swo
 *.swp
 setup.sh
+__pycache__
