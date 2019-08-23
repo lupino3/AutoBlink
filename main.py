@@ -29,9 +29,8 @@ async def send_blink_status(device_client, armed_status, error, connected_ips, a
     }
     serialized_msg = json.dumps(msg)
 
-    logger.info("Sending message: " + serialized_msg)
+    logger.info("Sending message: %s", serialized_msg)
     await device_client.send_d2c_message(serialized_msg)
-    logger.info("Message successfully sent!")
     await device_client.disconnect()
 
 async def get_connected_ips(onhub):
@@ -41,7 +40,6 @@ async def get_connected_ips(onhub):
 async def main(logger, blink, onhub, controlling_ips):
     mainLogger.info("Connecting to IoT Hub")
     device_client = IoTHubDeviceClient.create_from_connection_string(IOTHUB_DEVICE_CONNECTION_STRING)
-    mainLogger.info("Connected.")
 
     # Task to receive cloud-to-device commands.
     c2d_task = asyncio.create_task(device_client.receive_c2d_message())
@@ -57,23 +55,21 @@ async def main(logger, blink, onhub, controlling_ips):
         try:
             armed_status, connected_ips = await asyncio.gather(blink.armed_status(), get_connected_ips(onhub))
             connected_ips = sorted(connected_ips)
-            logger.info("Connected IPs: %s" % connected_ips)
-            logger.info("Armed Status: %s" % armed_status)
+            logger.info("Connected IPs: %s", connected_ips)
+            logger.info("Armed Status: %s", armed_status)
 
             connected_ips_set = frozenset(connected_ips)
-            logger.info("Controlling IPs: %s" % controlling_ips)
+            logger.info("Controlling IPs: %s", controlling_ips)
             connected_controlling_ips = sorted(ip for ip in controlling_ips if ip in connected_ips_set)
-            logger.info("Connected controlling IPs: %s" % connected_controlling_ips)
+            logger.info("Connected controlling IPs: %s", connected_controlling_ips)
 
             if armed_status == True:
-                logger.info("Blink armed, checking if any controlling devices are connected.")
                 if connected_controlling_ips:
                     action = "disarm"
                     blink.set_armed_status(False)
                 else:
                     logger.info("No controlling devices connected, not disarming")
             elif armed_status == False:
-                logger.info("Blink disarmed, checking if no controlling devices are connected.")
                 if not connected_controlling_ips:
                     action = "arm"
                     blink.set_armed_status(True)
@@ -93,12 +89,12 @@ async def main(logger, blink, onhub, controlling_ips):
         done, pending = await asyncio.wait({c2d_task}, timeout=30)
 
         if c2d_task in done:
-            logger.info("Exiting due to c2d message: " + c2d_task.result().data.decode("utf-8"))
+            logger.info("Exiting due to c2d message: %s", c2d_task.result().data.decode("utf-8"))
             sys.exit(0)
 
 
 if __name__ == "__main__":
-    logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
+    logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%Y/%m/%d %I:%M:%S %p')
     mainLogger = logging.getLogger("main")
     mainLogger.setLevel(logging.INFO)
 

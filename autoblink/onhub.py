@@ -23,7 +23,6 @@ class OnHubData:
         response = requests.get('http://onhub.here/api/v1/diagnostic-report',
                                 headers=headers,
                                 verify=False)
-        self.logger.info("Refreshed OnHub data.")
 
         self.stations = self._get_stations(response.content)
         return self
@@ -45,18 +44,18 @@ class OnHubData:
 
             if capturing:
                 data = line.strip()
-                self.logger.debug("Line %i: -%s-" % ((i+1), data))
+                self.logger.debug("Line %i: -%s-", i+1, data)
                 if data.endswith("{"):
                     parens_count += 1
-                    self.logger.debug("incremented parens_count to %d" % parens_count)
+                    self.logger.debug("incremented parens_count to %d", parens_count)
                     continue
                 if data.endswith("}"):
                     parens_count = max(parens_count - 1, 0) # ignore closing station_state_update
-                    self.logger.debug("decremented parens_count to %d" % parens_count)
+                    self.logger.debug("decremented parens_count to %d", parens_count)
 
                 if parens_count == 0:
                     host = tmp["dhcp_hostname"]
-                    self.logger.debug("saving data for %s" % host)
+                    self.logger.debug("saving data for %s", host)
                     self.logger.debug(tmp)
                     capturing = False
                     stations[host].append(tmp)
@@ -64,14 +63,14 @@ class OnHubData:
                     key, value = data.split(":")
                     value = value.strip().strip('"')
                     if value:
-                        self.logger.debug("Adding %s, %s" % (key, value))
+                        self.logger.debug("Adding %s, %s", key, value)
                         tmp[key] = value
                     else:
                         self.logger.debug("Empty key/value pair")
                     continue
 
             if "station_info" in line:
-                self.logger.debug("Started capturing at line %d" % (i+1))
+                self.logger.debug("Started capturing at line %d", i+1)
                 capturing = True
                 parens_count = 1
                 tmp = {}
