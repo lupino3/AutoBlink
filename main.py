@@ -17,7 +17,6 @@ BLINK_NETWORK = os.getenv("BLINK_NETWORK")
 CONTROLLING_IPS = os.getenv("CONTROLLING_IPS")
 
 async def send_blink_status(device_client, armed_status, error, connected_ips, action, logger):
-    await device_client.connect()
     msg = {
             "active": 1,
             "device": "RaspberryPiAutoBlink",
@@ -31,7 +30,6 @@ async def send_blink_status(device_client, armed_status, error, connected_ips, a
 
     logger.info("Sending message: %s", serialized_msg)
     await device_client.send_d2c_message(serialized_msg)
-    await device_client.disconnect()
 
 async def get_connected_ips(onhub):
     await onhub.refresh()
@@ -40,6 +38,7 @@ async def get_connected_ips(onhub):
 async def main(logger, blink, onhub, controlling_ips):
     mainLogger.info("Connecting to IoT Hub")
     device_client = IoTHubDeviceClient.create_from_connection_string(IOTHUB_DEVICE_CONNECTION_STRING)
+    await device_client.connect()
 
     # Task to receive cloud-to-device commands.
     c2d_task = asyncio.create_task(device_client.receive_c2d_message())
@@ -90,6 +89,7 @@ async def main(logger, blink, onhub, controlling_ips):
 
         if c2d_task in done:
             logger.info("Exiting due to c2d message: %s", c2d_task.result().data.decode("utf-8"))
+            # TODO: proper clean-up.
             sys.exit(0)
 
 
